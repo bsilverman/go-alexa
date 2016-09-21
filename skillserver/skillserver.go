@@ -2,6 +2,7 @@ package skillserver
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -19,7 +20,6 @@ import (
 	"time"
 
 	"github.com/codegangsta/negroni"
-	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 )
 
@@ -37,6 +37,7 @@ type StdApplication struct {
 }
 
 var Applications = map[string]interface{}{}
+var contextEchoReqKey = int(0)
 
 func Run(apps map[string]interface{}, port string) {
 	router := mux.NewRouter()
@@ -59,7 +60,7 @@ func Init(apps map[string]interface{}, router *mux.Router) {
 		switch app := meta.(type) {
 		case EchoApplication:
 			handlerFunc := func(w http.ResponseWriter, r *http.Request) {
-				echoReq := context.Get(r, "echoRequest").(*EchoRequest)
+				echoReq := r.Context().Value(contextEchoReqKey).(*EchoRequest)
 				echoResp := NewEchoResponse()
 
 				if echoReq.GetRequestType() == "LaunchRequest" {
@@ -105,7 +106,7 @@ func Init(apps map[string]interface{}, router *mux.Router) {
 }
 
 func GetEchoRequest(r *http.Request) *EchoRequest {
-	return context.Get(r, "echoRequest").(*EchoRequest)
+	return r.Context().Value(contextEchoReqKey).(*EchoRequest)
 }
 
 func HTTPError(w http.ResponseWriter, logMsg string, err string, errCode int) {
@@ -137,7 +138,8 @@ func verifyJSON(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 		return
 	}
 
-	context.Set(r, "echoRequest", echoReq)
+	ctx := context.WithValue(r.Context(), contextEchoReqKey, echoReq)
+	r = r.WithContext(ctx)
 
 	next(w, r)
 }
