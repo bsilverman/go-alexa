@@ -147,42 +147,43 @@ func verifyJSON(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 // Run all mandatory Amazon security checks on the request.
 func validateRequest(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	// Check for debug bypass flag
-	devFlag := r.URL.Query().Get("_dev")
+	if r.URL.Query().Get("_dev") != "" {
+		next(w, r)
+		return
+	}
 
 	certURL := r.Header.Get("SignatureCertChainUrl")
 
 	// Verify certificate URL
-	if !verifyCertURL(certURL) && devFlag == "" {
+	if !verifyCertURL(certURL) {
 		HTTPError(w, "Invalid cert URL: "+certURL, "Not Authorized", 401)
 		return
 	}
 
 	// Fetch certificate data
 	certContents, err := readCert(certURL)
-	if err != nil && devFlag == "" {
+	if err != nil {
 		HTTPError(w, err.Error(), "Not Authorized", 401)
 		return
 	}
 
 	// Decode certificate data
 	block, _ := pem.Decode(certContents)
-	if block == nil && devFlag == "" {
+	if block == nil {
 		HTTPError(w, "Failed to parse certificate PEM.", "Not Authorized", 401)
 		return
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil && devFlag == "" {
+	if err != nil {
 		HTTPError(w, err.Error(), "Not Authorized", 401)
 		return
 	}
 
 	// Check the certificate date
 	if time.Now().Unix() < cert.NotBefore.Unix() || time.Now().Unix() > cert.NotAfter.Unix() {
-		if devFlag == "" {
-			HTTPError(w, "Amazon certificate expired.", "Not Authorized", 401)
-			return
-		}
+		HTTPError(w, "Amazon certificate expired.", "Not Authorized", 401)
+		return
 	}
 
 	// Check the certificate alternate names
@@ -193,7 +194,7 @@ func validateRequest(w http.ResponseWriter, r *http.Request, next http.HandlerFu
 		}
 	}
 
-	if !foundName && devFlag == "" {
+	if !foundName {
 		HTTPError(w, "Amazon certificate invalid.", "Not Authorized", 401)
 		return
 	}
@@ -214,7 +215,7 @@ func validateRequest(w http.ResponseWriter, r *http.Request, next http.HandlerFu
 	r.Body = ioutil.NopCloser(&bodyBuf)
 
 	err = rsa.VerifyPKCS1v15(publicKey.(*rsa.PublicKey), crypto.SHA1, hash.Sum(nil), encryptedSig)
-	if err != nil && devFlag == "" {
+	if err != nil {
 		HTTPError(w, "Signature match failed.", "Not Authorized", 401)
 		return
 	}
